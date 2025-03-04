@@ -291,7 +291,6 @@
             this.problemType = problemType;
             this.mainVars = Object.keys(objective).sort();
             this.slackCounter = this.mainVars.length + 1;
-            this.slackVars = [];
             this.initTable(objective, constraints);
         }
 
@@ -303,7 +302,6 @@
             constraints.forEach((constraint) => {
                 const varsToAdd = [];
                 const slackVar = `X${this.slackCounter++}`;
-                this.slackVars.push(slackVar);
                 
                 if (constraint.operator === '>=' || constraint.operator === '=') {
                     const artVar = `A${this.slackCounter++}`;
@@ -431,8 +429,8 @@
                     throw new Error('Решения не существует');
                 }
 
-                this.pivot(pivotCol, pivotRow);
                 this.saveState(iteration, pivotCol, pivotRow);
+                this.pivot(pivotCol, pivotRow);
                 iteration++;
             }
             
@@ -441,14 +439,10 @@
         }
 
         saveState(iteration, pivotCol = null, pivotRow = null) {
-            const nonBasisVars = this.variables.filter(v => 
-                !this.basis.includes(v) && v !== 'RHS' && !v.startsWith('A')
-            );
-            
             const state = {
                 iteration: iteration + 1,
                 basis: [...this.basis],
-                variablesOrder: [...nonBasisVars],
+                variablesOrder: [...this.variables],
                 pivotCol,
                 pivotRow,
                 table: JSON.parse(JSON.stringify(this.table)),
@@ -549,10 +543,13 @@
     }
 
     function renderTable(state) {
+        const nonBasisVars = state.variablesOrder
+            .filter(v => v !== 'RHS' && !state.basis.includes(v));
+
         let html = '<table><tr>';
         html += '<th>Базис</th><th>Свободные</th>';
         
-        state.variablesOrder.forEach(v => {
+        nonBasisVars.forEach(v => {
             html += `<th${v === state.pivotCol ? ' class="leading-column"' : ''}>${v}</th>`;
         });
         
@@ -564,7 +561,7 @@
             html += `<td>${basisVar}</td>`;
             html += `<td>${(row.RHS ?? 0).toFixed(2)}</td>`;
             
-            state.variablesOrder.forEach(v => {
+            nonBasisVars.forEach(v => {
                 html += `<td>${(row[v] ?? 0).toFixed(2)}</td>`;
             });
 
@@ -573,7 +570,7 @@
         });
 
         html += `<tr><td>Z</td><td>${(state.zRow.RHS ?? 0).toFixed(2)}</td>`;
-        state.variablesOrder.forEach(v => {
+        nonBasisVars.forEach(v => {
             html += `<td>${(state.zRow[v] ?? 0).toFixed(2)}</td>`;
         });
         html += '<td></td></tr></table>';
@@ -603,4 +600,8 @@
             }
         });
         document.getElementById('problemType').addEventListener('change', solveProblem);
-   
+        document.getElementById('objectiveFunction').addEventListener('input', solveProblem);
+    });
+</script>
+</body>
+</html>
