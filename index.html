@@ -119,10 +119,23 @@
         }
 
         .var-group {
+            background: #f8f9fa;
             padding: 15px;
-            margin: 15px 0;
-            border: 1px solid #eee;
             border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .var-group h5 {
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        .var-group p {
+            margin: 8px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
 
         .iteration {
@@ -178,18 +191,19 @@
             transform: scale(1.1);
             box-shadow: 0 2px 6px rgba(255, 68, 68, 0.4);
         }
-     .leading-column {
-    background-color: #fff3e0 !important;
-    font-weight: bold;
-}
 
-.leading-row {
-    background-color: #f0f4c3 !important;
-}
+        .leading-column {
+            background-color: #fff3e0 !important;
+            font-weight: bold;
+        }
 
-.ratio-column {
-    background-color: #e8f5e9;
-}
+        .leading-row {
+            background-color: #f0f4c3 !important;
+        }
+
+        .ratio-column {
+            background-color: #e8f5e9;
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
 </head>
@@ -274,10 +288,8 @@
             let coeff = 1;
             
             if (coeffStr === '-') coeff = -1;
-            else if (coeffStr !== '+' && coeffStr !== '') {
-                coeff = parseFloat(coeffStr);
-                if (isNaN(coeff)) throw new Error(`Некорректный коэффициент: ${coeffStr}`);
-            }
+            else if (coeffStr === '+') coeff = 1;
+            else if (coeffStr !== '') coeff = parseFloat(coeffStr);
             
             const varUpper = varName.toUpperCase();
             coefficients[varUpper] = (coefficients[varUpper] || 0) + coeff;
@@ -288,6 +300,7 @@
     class SimplexSolver {
         constructor(objective, constraints, problemType) {
             this.history = [];
+            this.modifiedConstraints = [];
             this.problemType = problemType;
             this.mainVars = Object.keys(objective).sort();
             this.slackCounter = this.mainVars.length + 1;
@@ -298,16 +311,23 @@
             this.table = [];
             this.basis = [];
             this.variables = [...this.mainVars];
+            this.modifiedConstraints = [];
 
             constraints.forEach((constraint) => {
-                const varsToAdd = [];
-                const slackVar = `X${this.slackCounter++}`;
+                const addedVars = [];
+                let slackVar = `X${this.slackCounter++}`;
                 
-                if (constraint.operator === '>=' || constraint.operator === '=') {
+                if (constraint.operator === '>=') {
+                    addedVars.push({ name: slackVar, coeff: -1 });
                     const artVar = `A${this.slackCounter++}`;
-                    varsToAdd.push(slackVar, artVar);
-                } else {
-                    varsToAdd.push(slackVar);
+                    addedVars.push({ name: artVar, coeff: 1 });
+                } 
+                else if (constraint.operator === '<=') {
+                    addedVars.push({ name: slackVar, coeff: 1 });
+                }
+                else if (constraint.operator === '=') {
+                    const artVar = `A${this.slackCounter++}`;
+                    addedVars.push({ name: artVar, coeff: 1 });
                 }
 
                 const row = this.variables.reduce((acc, varName) => {
@@ -315,11 +335,16 @@
                     return acc;
                 }, {});
 
-                varsToAdd.forEach(v => row[v] = 1);
+                addedVars.forEach(v => row[v.name] = v.coeff);
                 row['RHS'] = constraint.value;
-                this.basis.push(varsToAdd[0]);
+                this.basis.push(addedVars[0]?.name);
                 this.table.push(row);
-                this.variables.push(...varsToAdd);
+                this.variables.push(...addedVars.map(v => v.name));
+
+                this.modifiedConstraints.push({
+                    original: constraint,
+                    addedVars: addedVars
+                });
             });
 
             this.zRow = this.variables.reduce((acc, varName) => {
@@ -496,7 +521,7 @@
             );
             
             const solution = solver.solve();
-            showResults(solution);
+            showResults(solution, solver);
             showProcess(solver.history);
 
         } catch (error) {
@@ -504,11 +529,34 @@
         }
     }
 
-    function showResults(solution) {
+    function showResults(solution, solver) {
         const formatValue = (value) => value?.toFixed(2) || '0.00';
         let html = `<div class="success-box">
             <h4>Оптимальное решение найдено!</h4>
             <p>Целевая функция: <strong>${formatValue(solution?.z)}</strong></p>`;
+
+        html += `<div class="var-group">
+            <h5>Преобразованные ограничения:</h5>
+            ${solver.modifiedConstraints.map((mc, index) => {
+                const constraint = mc.original;
+                let lhs = Object.entries(constraint.coefficients)
+                    .map(([varName, coeff]) => {
+                        const sign = coeff >= 0 ? '+' : '-';
+                        const val = Math.abs(coeff).toFixed(2);
+                        return `${sign} ${val === '1.00' ? '' : val}${varName}`;
+                    })
+                    .join(' ')
+                    .replace(/^\+ /, '');
+
+                const added = mc.addedVars.map(v => {
+                    const sign = v.coeff >= 0 ? '+' : '-';
+                    const absVal = Math.abs(v.coeff).toFixed(2);
+                    return `${sign} ${absVal === '1.00' ? '' : absVal}${v.name}`;
+                }).join(' ');
+
+                return `<p>${index + 1}. ${lhs || '0'} ${added} = ${constraint.value.toFixed(2)}</p>`;
+            }).join('')}
+        </div>`;
 
         html += `<div class="var-group">
             <h5>Основные переменные:</h5>
@@ -550,58 +598,4 @@
         html += '<th>Базис</th><th>Свободные</th>';
         
         nonBasisVars.forEach(v => {
-            html += `<th${v === state.pivotCol ? ' class="leading-column"' : ''}>${v}</th>`;
-        });
-        
-        html += '<th class="ratio-column">Отношение</th></tr>';
-
-        state.table.forEach((row, i) => {
-            const basisVar = state.basis[i];
-            html += `<tr${i === state.pivotRow ? ' class="leading-row"' : ''}>`;
-            html += `<td>${basisVar}</td>`;
-            html += `<td>${(row.RHS ?? 0).toFixed(2)}</td>`;
-            
-            nonBasisVars.forEach(v => {
-                html += `<td>${(row[v] ?? 0).toFixed(2)}</td>`;
-            });
-
-            html += `<td class="ratio-column">${state.ratios[i] ?? '—'}</td>`;
-            html += '</tr>';
-        });
-
-        html += `<tr><td>Z</td><td>${(state.zRow.RHS ?? 0).toFixed(2)}</td>`;
-        nonBasisVars.forEach(v => {
-            html += `<td>${(state.zRow[v] ?? 0).toFixed(2)}</td>`;
-        });
-        html += '<td></td></tr></table>';
-        
-        return html;
-    }
-
-    function toggleIteration(index) {
-        const content = document.getElementById(`iter-${index}`);
-        content.classList.toggle('visible');
-    }
-
-    function showError(message) {
-        document.getElementById('solutionSteps').innerHTML = `
-            <div class="error-box">
-                <h4>Ошибка!</h4>
-                <p>${message}</p>
-            </div>
-        `;
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('addConstraintBtn').addEventListener('click', addConstraint);
-        document.getElementById('constraintsList').addEventListener('click', (e) => {
-            if (e.target.classList.contains('remove-btn')) {
-                removeConstraint(e.target);
-            }
-        });
-        document.getElementById('problemType').addEventListener('change', solveProblem);
-        document.getElementById('objectiveFunction').addEventListener('input', solveProblem);
-    });
-</script>
-</body>
-</html>
+            html += `<th${v === state.pivotCol
