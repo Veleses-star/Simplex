@@ -598,4 +598,58 @@
         html += '<th>Базис</th><th>Свободные</th>';
         
         nonBasisVars.forEach(v => {
-            html += `<th${v === state.pivotCol
+            html += `<th${v === state.pivotCol ? ' class="leading-column"' : ''}>${v}</th>`;
+        });
+        
+        html += '<th class="ratio-column">Отношение</th></tr>';
+
+        state.table.forEach((row, i) => {
+            const basisVar = state.basis[i];
+            html += `<tr${i === state.pivotRow ? ' class="leading-row"' : ''}>`;
+            html += `<td>${basisVar}</td>`;
+            html += `<td>${(row.RHS ?? 0).toFixed(2)}</td>`;
+            
+            nonBasisVars.forEach(v => {
+                html += `<td>${(row[v] ?? 0).toFixed(2)}</td>`;
+            });
+
+            html += `<td class="ratio-column">${state.ratios[i] ?? '—'}</td>`;
+            html += '</tr>';
+        });
+
+        html += `<tr><td>Z</td><td>${(state.zRow.RHS ?? 0).toFixed(2)}</td>`;
+        nonBasisVars.forEach(v => {
+            html += `<td>${(state.zRow[v] ?? 0).toFixed(2)}</td>`;
+        });
+        html += '<td></td></tr></table>';
+        
+        return html;
+    }
+
+    function toggleIteration(index) {
+        const content = document.getElementById(`iter-${index}`);
+        content.classList.toggle('visible');
+    }
+
+    function showError(message) {
+        document.getElementById('solutionSteps').innerHTML = `
+            <div class="error-box">
+                <h4>Ошибка!</h4>
+                <p>${message}</p>
+            </div>
+        `;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('addConstraintBtn').addEventListener('click', addConstraint);
+        document.getElementById('constraintsList').addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-btn')) {
+                removeConstraint(e.target);
+            }
+        });
+        document.getElementById('problemType').addEventListener('change', solveProblem);
+        document.getElementById('objectiveFunction').addEventListener('input', solveProblem);
+    });
+    </script>
+</body>
+</html>
